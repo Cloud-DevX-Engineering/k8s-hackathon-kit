@@ -6,8 +6,13 @@ Everything you need to run a Kubernetes hackathon or workshop on WSL2 — a loca
 
 ```
 k8s-hackathon-kit/
-├── talos/        Local Talos Kubernetes cluster (Docker provisioner on WSL2)
-├── openclaw/     OpenClaw AI agent setup (backlog management, cluster ops, coding)
+├── talos/                  Local Talos Kubernetes cluster (Docker provisioner on WSL2)
+│   ├── install-talos.sh    First-time setup: installs talosctl + kubectl, creates cluster
+│   ├── start-talos.sh      Day-to-day: resumes or creates cluster
+│   └── stop-talos.sh       Stop cluster (preserves data)
+├── openclaw/               OpenClaw AI agent setup
+│   ├── setup-openclaw-wsl2.sh    Full setup: creates openclaw user, installs Node.js + OpenClaw
+│   └── azure-proxy/        Proxy for Azure-hosted models (Mistral, Kimi, Grok)
 ├── LICENSE
 └── README.md
 ```
@@ -17,6 +22,7 @@ k8s-hackathon-kit/
 - **Windows** with WSL2 (Ubuntu)
 - **Docker** installed and running in WSL2 (`sudo systemctl start docker`)
 - User in the docker group (`sudo usermod -aG docker $USER`)
+- systemd enabled in WSL2 (the setup script will handle this if needed)
 
 ## Quick Start
 
@@ -33,12 +39,27 @@ chmod +x *.sh
 
 ```bash
 cd openclaw
-chmod +x *.sh
-sudo ./setup-openclaw-user.sh              # Creates dedicated 'openclaw' user with sudo + docker
-sudo -u openclaw ./install-openclaw.sh     # Installs OpenClaw as the openclaw user
+chmod +x setup-openclaw-wsl2.sh
+sudo ./setup-openclaw-wsl2.sh
 ```
 
-OpenClaw runs as a systemd user service under the `openclaw` account — isolated from your main user, with its own home directory, workspace, and Node.js install. Accessible at http://localhost:18789.
+This single script creates a dedicated `openclaw` user, installs Homebrew, Node.js, and OpenClaw under it. When it finishes, follow the printed next steps:
+
+```bash
+# Switch to the openclaw user (requires machinectl for a proper systemd session)
+sudo machinectl shell openclaw@.host
+
+# Run the interactive onboarding wizard
+openclaw onboard --install-daemon
+```
+
+> ⚠️ **Important:** Do NOT use `sudo -iu openclaw`. It doesn't create a proper systemd user session, which breaks the gateway daemon. Always use `machinectl`.
+
+OpenClaw runs as a systemd user service under the `openclaw` account — isolated from your main user, accessible at http://localhost:18789.
+
+### 3. (Optional) Azure model proxy
+
+If you're using Azure-hosted models (Mistral, Kimi, Grok), see [`openclaw/azure-proxy/README.md`](openclaw/azure-proxy/README.md).
 
 ## Day-to-Day Usage
 
@@ -60,7 +81,7 @@ sudo -E talosctl cluster destroy --name local-talos --provisioner docker
 
 - WSL2 doesn't persist Docker containers across Windows restarts — run `start-talos.sh` after each reboot
 - `sudo -E` is required when creating/destroying the cluster
-- OpenClaw daemon auto-starts with WSL2 once installed
+- OpenClaw daemon auto-starts with WSL2 once installed (via systemd linger)
 
 ## Links
 
