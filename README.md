@@ -34,11 +34,11 @@ chmod +x *.sh
 ```bash
 cd openclaw
 chmod +x *.sh
-sudo ./setup-openclaw-user.sh   # Creates dedicated system user with sudo
-./install-openclaw.sh           # Installs OpenClaw + background daemon
+sudo ./setup-openclaw-user.sh              # Creates dedicated 'openclaw' user with sudo + docker
+sudo -u openclaw ./install-openclaw.sh     # Installs OpenClaw as the openclaw user
 ```
 
-OpenClaw gives you an AI assistant that can manage your cluster, groom Azure DevOps backlogs, write code, and more — accessible at http://localhost:18789.
+OpenClaw runs as a systemd user service under the `openclaw` account — isolated from your main user, with its own home directory, workspace, and Node.js install. Accessible at http://localhost:18789.
 
 ## Day-to-Day Usage
 
