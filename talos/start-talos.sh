@@ -2,8 +2,8 @@
 # =============================================================================
 # Start Local Talos Cluster (WSL2)
 # =============================================================================
-# Starts the local-talos Docker-provisioned cluster.
-# If the cluster doesn't exist yet, run install-talos.sh first.
+# Starts dockerd, resumes Talos containers, waits for Ready, and restores
+# the socat port-forward so the webapp is accessible at http://localhost:8080
 #
 # Usage:
 #   chmod +x start-talos.sh
@@ -13,8 +13,8 @@
 set -e
 
 CLUSTER_NAME="local-talos"
-KUBECONFIG="/home/openclaw/.kube/config"
-KUBECTL="/snap/bin/kubectl"
+EXPOSE_PORT=8080          # Windows-accessible port
+NODEPORT=30090            # nginx-lb NodePort inside cluster
 
 echo ""
 echo "🚀 Starting Talos cluster: $CLUSTER_NAME"
@@ -22,56 +22,106 @@ echo "==========================================="
 echo ""
 
 # -----------------------------------------------------------------------------
-# Check Docker
+# STEP 1: Ensure dockerd is running
 # -----------------------------------------------------------------------------
-if ! docker info > /dev/null 2>&1; then
-  echo "❌ Docker is not running. Starting it..."
-  sudo systemctl start docker
-  sleep 3
+if ! sudo docker info > /dev/null 2>&1; then
+  echo "🐳 Starting dockerd..."
+  sudo dockerd --host=unix:///var/run/docker.sock &>/tmp/dockerd.log &
+  for i in {1..10}; do
+    sleep 2
+    sudo docker info > /dev/null 2>&1 && break
+    echo "   Waiting for dockerd... ($i/10)"
+  done
+fi
+
+if ! sudo docker info > /dev/null 2>&1; then
+  echo "❌ dockerd failed to start. Check /tmp/dockerd.log"
+  exit 1
 fi
 echo "✅ Docker is running"
 
 # -----------------------------------------------------------------------------
-# Check if containers already exist (cluster was previously created)
+# STEP 2: Start cluster containers
 # -----------------------------------------------------------------------------
-EXISTING=$(docker ps -a --filter "name=$CLUSTER_NAME" --format "{{.Names}}" 2>/dev/null)
+EXISTING=$(sudo docker ps -a --filter "name=$CLUSTER_NAME" --format "{{.Names}}" 2>/dev/null)
 
 if [ -n "$EXISTING" ]; then
-  echo "📦 Found existing cluster containers — starting them..."
-  docker ps -a --filter "name=$CLUSTER_NAME" --format "{{.Names}}" | xargs -r docker start
-  echo "✅ Containers started"
+  echo "📦 Resuming existing cluster containers..."
+  sudo docker ps -a --filter "name=$CLUSTER_NAME" --format "{{.Names}}" | xargs sudo docker start 2>/dev/null || true
 else
-  echo "⚠️  No existing cluster found. Creating a new one..."
-  sudo -u openclaw sudo -E talosctl cluster create docker --name "$CLUSTER_NAME"
+  echo "⚠️  No existing cluster found — run install-talos.sh first"
+  exit 1
 fi
 
 # -----------------------------------------------------------------------------
-# Wait for nodes to be ready
+# STEP 3: Wait for nodes Ready
 # -----------------------------------------------------------------------------
 echo ""
-echo "⏳ Waiting for nodes to become ready..."
-sleep 10
-
-for i in {1..12}; do
-  if KUBECONFIG="$KUBECONFIG" $KUBECTL get nodes 2>/dev/null | grep -q "Ready"; then
+echo "⏳ Waiting for nodes to become Ready..."
+for i in {1..30}; do
+  if kubectl get nodes 2>/dev/null | grep -v "NotReady" | grep -q "Ready"; then
     break
   fi
-  echo "   Still waiting... ($i/12)"
+  echo "   ($i/30) waiting..."
   sleep 5
 done
 
-# -----------------------------------------------------------------------------
-# Status
-# -----------------------------------------------------------------------------
-echo ""
-echo "🔍 Cluster status:"
-KUBECONFIG="$KUBECONFIG" $KUBECTL get nodes 2>/dev/null || echo "⚠️  kubectl not responding yet — try again in a moment"
+# Uncordon worker nodes — they come back cordoned after a container restart
+kubectl uncordon -l '!node-role.kubernetes.io/control-plane' 2>/dev/null || true
+
+# Wait for worker to flip to Ready after uncordon
+for i in {1..12}; do
+  NOT_READY=$(kubectl get nodes --no-headers 2>/dev/null | grep -v "control-plane" | grep "NotReady" | wc -l)
+  [ "$NOT_READY" -eq 0 ] && break
+  echo "   Waiting for worker Ready after uncordon... ($i/12)"
+  sleep 5
+done
 
 echo ""
-echo "==========================================="
-echo "✅ Talos cluster '$CLUSTER_NAME' is running"
+kubectl get nodes
+
+# -----------------------------------------------------------------------------
+# STEP 4: Restore socat port-forward (Windows access)
+# -----------------------------------------------------------------------------
 echo ""
-echo "  Check nodes:    KUBECONFIG=$KUBECONFIG kubectl get nodes"
-echo "  Check pods:     KUBECONFIG=$KUBECONFIG kubectl get pods -A"
-echo "  Stop cluster:   ./stop-talos.sh"
+echo "🌐 Restoring port-forward on :$EXPOSE_PORT..."
+
+# Ensure socat is installed
+if ! command -v socat &>/dev/null; then
+  echo "   Installing socat..."
+  sudo apt-get install -y socat -qq 2>/dev/null
+fi
+
+# Kill any existing forwarders on this port
+fuser -k ${EXPOSE_PORT}/tcp 2>/dev/null || true
+sleep 1
+
+WORKER_IP=$(sudo docker inspect ${CLUSTER_NAME}-worker-1 \
+  --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null)
+
+if [ -z "$WORKER_IP" ]; then
+  echo "⚠️  Could not determine worker IP — skipping port-forward"
+else
+  socat TCP-LISTEN:${EXPOSE_PORT},bind=0.0.0.0,fork,reuseaddr TCP:${WORKER_IP}:${NODEPORT} &
+  sleep 2
+  if curl -s http://localhost:${EXPOSE_PORT} > /dev/null 2>&1; then
+    echo "✅ Port-forward active: http://localhost:${EXPOSE_PORT} → $WORKER_IP:${NODEPORT}"
+  else
+    echo "⚠️  Port-forward started but app may still be warming up"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# Done
+# -----------------------------------------------------------------------------
+echo ""
+echo "==========================================="
+echo "✅ Cluster '$CLUSTER_NAME' is running"
+echo ""
+echo "  kubectl get nodes"
+echo "  kubectl get pods -A"
+echo "  🌐 http://localhost:${EXPOSE_PORT}"
+echo ""
+echo "  Stop:    ./stop-talos.sh"
+echo "  Destroy: sudo -E talosctl cluster destroy docker --name $CLUSTER_NAME"
 echo "==========================================="
