@@ -62,7 +62,7 @@ if ! grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
 fi
 
 # ── Step 1: Ensure systemd is enabled ────────────────────────────────────────
-step "1/9 — Checking systemd"
+step "1/10 — Checking systemd"
 
 WSL_CONF="/etc/wsl.conf"
 
@@ -100,7 +100,7 @@ EOF
 fi
 
 # ── Step 2: Install system dependencies ──────────────────────────────────────
-step "2/9 — Installing system dependencies"
+step "2/10 — Installing system dependencies"
 
 apt-get update -qq
 apt-get install -y -qq \
@@ -118,7 +118,7 @@ apt-get install -y -qq \
 ok "System dependencies installed."
 
 # ── Step 3: Install systemd-container (machinectl) ───────────────────────────
-step "3/9 — Installing systemd-container (machinectl)"
+step "3/10 — Installing systemd-container (machinectl)"
 
 if command -v machinectl &>/dev/null; then
     ok "machinectl already installed."
@@ -131,7 +131,7 @@ info "machinectl is required to get a proper systemd user session."
 info "Always use 'sudo machinectl shell openclaw@.host' instead of 'sudo -iu openclaw'."
 
 # ── Step 4: Create the openclaw user ─────────────────────────────────────────
-step "4/9 — Creating user '${OPENCLAW_USER}'"
+step "4/10 — Creating user '${OPENCLAW_USER}'"
 
 if id "${OPENCLAW_USER}" &>/dev/null; then
     ok "User '${OPENCLAW_USER}' already exists."
@@ -147,7 +147,7 @@ fi
 OPENCLAW_HOME="/home/${OPENCLAW_USER}"
 
 # ── Step 5: Configure passwordless sudo ──────────────────────────────────────
-step "5/9 — Configuring passwordless sudo for '${OPENCLAW_USER}'"
+step "5/10 — Configuring passwordless sudo for '${OPENCLAW_USER}'"
 
 SUDOERS_FILE="/etc/sudoers.d/${OPENCLAW_USER}"
 
@@ -168,7 +168,7 @@ else
 fi
 
 # ── Step 6: Install Homebrew (Linuxbrew) for the openclaw user ───────────────
-step "6/9 — Setting up Homebrew (Linuxbrew)"
+step "6/10 — Setting up Homebrew (Linuxbrew)"
 
 BREW_PREFIX="/home/linuxbrew/.linuxbrew"
 
@@ -207,7 +207,7 @@ BREWRC
 ok "Homebrew added to ${OPENCLAW_USER}'s shell profile."
 
 # ── Step 7: Install nvm + Node.js as the openclaw user ──────────────────────
-step "7/9 — Installing nvm and Node.js ${NODE_MAJOR_VERSION} for '${OPENCLAW_USER}'"
+step "7/10 — Installing nvm and Node.js ${NODE_MAJOR_VERSION} for '${OPENCLAW_USER}'"
 
 sudo -iu "${OPENCLAW_USER}" bash <<USERSHELL
 set -euo pipefail
@@ -242,7 +242,7 @@ USERSHELL
 ok "Node.js ${NODE_MAJOR_VERSION} ready for user '${OPENCLAW_USER}'."
 
 # ── Step 8: Install OpenClaw as the openclaw user ────────────────────────────
-step "8/9 — Installing OpenClaw"
+step "8/10 — Installing OpenClaw"
 
 sudo -iu "${OPENCLAW_USER}" bash <<'USERSHELL'
 set -euo pipefail
@@ -280,8 +280,34 @@ NPMRC
 
 ok "OpenClaw installed for user '${OPENCLAW_USER}'."
 
-# ── Step 9: Enable systemd user linger + start user manager ─────────────────
-step "9/9 — Enabling systemd linger and user manager for '${OPENCLAW_USER}'"
+# ── Step 9: Configure heartbeat interval ─────────────────────────────────────
+step "9/10 — Setting heartbeat interval to 1m for '${OPENCLAW_USER}'"
+
+OPENCLAW_CONFIG="${OPENCLAW_HOME}/.openclaw/openclaw.json"
+mkdir -p "${OPENCLAW_HOME}/.openclaw"
+
+sudo -u "${OPENCLAW_USER}" python3 - "${OPENCLAW_CONFIG}" << 'HEARTBEAT'
+import sys, json
+
+config_path = sys.argv[1]
+config = {}
+try:
+    with open(config_path) as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    pass
+
+config.setdefault("agents", {}).setdefault("defaults", {})
+config["agents"]["defaults"]["heartbeat"] = {"every": "1m", "target": "last"}
+
+with open(config_path, "w") as f:
+    json.dump(config, f, indent=2)
+HEARTBEAT
+
+ok "Heartbeat set to 1m (cron output appears in TUI/browser within ~1 minute)."
+
+# ── Step 10: Enable systemd user linger + start user manager ────────────────
+step "10/10 — Enabling systemd linger and user manager for '${OPENCLAW_USER}'"
 
 loginctl enable-linger "${OPENCLAW_USER}" 2>/dev/null || true
 ok "Linger enabled — systemd user services will persist after logout."
