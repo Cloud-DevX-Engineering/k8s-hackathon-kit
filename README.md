@@ -6,13 +6,20 @@ Everything you need to run a Kubernetes hackathon or workshop on WSL2 — a loca
 
 ```
 k8s-hackathon-kit/
-├── talos/                  Local Talos Kubernetes cluster (Docker provisioner on WSL2)
-│   ├── install-talos.sh    First-time setup: installs talosctl + kubectl, creates cluster
-│   ├── start-talos.sh      Day-to-day: resumes or creates cluster
-│   └── stop-talos.sh       Stop cluster (preserves data)
-├── openclaw/               OpenClaw AI agent setup
-│   ├── setup-openclaw-wsl2.sh    Full setup: creates openclaw user, installs Node.js + OpenClaw
-│   └── azure-proxy/        Proxy for Azure-hosted models (Mistral, Kimi, Grok)
+├── talos/                         Local Talos Kubernetes cluster (Docker provisioner on WSL2)
+│   ├── install-talos.sh           First-time setup: installs talosctl + kubectl, creates cluster
+│   ├── start-talos.sh             Day-to-day: resumes cluster, restores port-forward
+│   └── stop-talos.sh              Stop cluster (preserves data)
+├── openclaw/                      OpenClaw AI agent setup
+│   ├── setup-openclaw-wsl2.sh     Full setup: creates openclaw user, installs Node.js + OpenClaw
+│   ├── setup-nebius.sh            Configure Nebius Token Factory models for OpenClaw
+│   └── azure-proxy/               Proxy for Azure-hosted models (Mistral, Kimi, Grok)
+├── nemoclaw/                      Sandboxed AI agent environments (OpenShell)
+│   ├── setup-nemoclaw.sh          Install NemoClaw CLI and create sandbox
+│   ├── setup-nebius.sh            Configure Nebius as inference provider for sandbox
+│   ├── cleanup.sh                 Destroy sandbox and stop gateway
+│   ├── nebius-network-policy.yaml Sandbox network/filesystem policy
+│   └── update-openclaw-model.py   Update OpenClaw config inside sandbox
 ├── LICENSE
 └── README.md
 ```
@@ -74,7 +81,7 @@ If you're using Azure-hosted models (Mistral, Kimi, Grok), see [`openclaw/azure-
 kubectl get nodes
 
 # Full destroy (removes all data)
-sudo -E talosctl cluster destroy --name local-talos --provisioner docker
+sudo -E talosctl cluster destroy docker --name local-talos
 ```
 
 ## Notes

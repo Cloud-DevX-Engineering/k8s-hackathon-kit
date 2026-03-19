@@ -43,6 +43,16 @@ Proxy for OpenClaw to use Azure-hosted models (Mistral, Kimi, Grok) with tool ca
             "id": "mistral-large-3",
             "name": "Mistral Large 3 (Azure)",
             "contextWindow": 128000
+          },
+          {
+            "id": "kimi-k2.5",
+            "name": "Kimi K2.5 (Azure)",
+            "contextWindow": 262000
+          },
+          {
+            "id": "grok-4-1-fast-reasoning",
+            "name": "Grok 4.1 Fast Reasoning (Azure)",
+            "contextWindow": 128000
           }
         ]
       }
@@ -53,4 +63,4 @@ Proxy for OpenClaw to use Azure-hosted models (Mistral, Kimi, Grok) with tool ca
 
 ## License
 
-MIT
+Apache 2.0 (see repo root)

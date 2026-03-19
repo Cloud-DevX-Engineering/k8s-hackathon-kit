@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find C:UserskjenProjectsk8s-hackathon-kit -not -path */.git/* -type f -o -type d)"
+    ]
+  }
+}
